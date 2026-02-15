@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Secret Sauce 🔐 Dashboard</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:#0d1117;color:#c9d1d9;padding:20px;max-width:800px;margin:0 auto}
+h1{text-align:center;margin-bottom:24px;font-size:1.6rem}
+.card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:16px;margin-bottom:16px}
+.card h2{font-size:1.1rem;margin-bottom:12px;color:#58a6ff}
+button{background:#238636;color:#fff;border:none;border-radius:8px;padding:10px 20px;cursor:pointer;font-size:.95rem}
+button:hover{background:#2ea043}
+button:disabled{opacity:.5;cursor:not-allowed}
+audio{width:100%;margin-top:8px}
+textarea{width:100%;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-radius:8px;padding:10px;font-family:monospace;resize:vertical}
+.msg{padding:10px;border-radius:8px;margin-bottom:8px;white-space:pre-wrap;word-break:break-all}
+.msg.vault{background:#1a1e2e;border-left:3px solid #f0883e}
+.msg.oracle{background:#1a2e1a;border-left:3px solid #7ee787}
+.tag{font-size:.75rem;opacity:.6;display:block;margin-top:4px}
+.status{text-align:center;padding:8px;font-size:.85rem;opacity:.7}
+#result{margin-top:12px;padding:12px;background:#0d1117;border-radius:8px;border:1px solid #30363d;display:none;white-space:pre-wrap}
+.row{display:flex;gap:8px;margin-top:10px}
+</style>
+</head>
+<body>
+<h1>🔐 Secret Sauce Dashboard</h1>
+
+<!-- Chirp Player -->
+<div class="card">
+  <h2>🔊 Latest Chirp from Vault</h2>
+  <p style="font-size:.85rem;opacity:.7;margin-bottom:8px">When Omi creates a memory, the Vault encrypts it and generates a chirp. Play it here — hold Phone B's Omi device near the speaker to capture it.</p>
+  <div class="row">
+    <button id="btnPlay" onclick="playChirp()">▶ Play Chirp</button>
+    <button onclick="refreshAll()" style="background:#30363d">🔄 Refresh</button>
+  </div>
+  <audio id="chirpAudio" controls style="display:none"></audio>
+  <div id="chirpStatus" class="status">No chirp yet — trigger a memory webhook first</div>
+</div>
+
+<!-- Oracle Listener (Device B) -->
+<div class="card">
+  <h2>🎤 Oracle Listener (Device B)</h2>
+  <p style="font-size:.85rem;opacity:.7;margin-bottom:8px">Open this on <strong>Phone B</strong>. Tap Listen, then play the chirp on Phone A. The mic will capture the chirp and decode it.</p>
+  <div class="row">
+    <button id="btnListen" onclick="startListening()">🎤 Start Listening (6s)</button>
+  </div>
+  <div id="listenStatus" class="status">Ready to listen</div>
+  <div id="listenResult" style="margin-top:12px;padding:12px;background:#0d1117;border-radius:8px;border:1px solid #30363d;display:none;white-space:pre-wrap"></div>
+</div>
+
+<!-- Oracle Manual Decode -->
+<div class="card">
+  <h2>🔮 Manual Decode</h2>
+  <p style="font-size:.85rem;opacity:.7;margin-bottom:8px">Or paste an encrypted token manually.</p>
+  <textarea id="encInput" rows="2" placeholder="Paste encrypted token here..."></textarea>
+  <div class="row">
+    <button onclick="decode()">🔮 Decode</button>
+  </div>
+  <div id="result"></div>
+</div>
+
+<!-- Send Task via Chirp (Device A) -->
+<div class="card">
+  <h2>📋 Send Task via Chirp (Device A → B)</h2>
+  <p style="font-size:.85rem;opacity:.7;margin-bottom:8px">Type a task → encrypts into a chirp → play on Phone A → Phone B captures & creates the task on Device B.</p>
+  <textarea id="taskDesc" rows="2" placeholder="Task description..."></textarea>
+  <div class="row">
+    <button onclick="sendTaskChirp()">🔒 Seal Task as Chirp</button>
+    <button id="btnPlayTask" onclick="playChirp()" style="background:#30363d;display:none">▶ Play Task Chirp</button>
+    <button onclick="refreshTasks()" style="background:#30363d">🔄 Refresh</button>
+  </div>
+  <div id="taskStatus" class="status"></div>
+  <div style="display:flex;gap:12px;margin-top:12px">
+    <div style="flex:1">
+      <h3 style="font-size:.9rem;color:#f0883e;margin-bottom:6px">🔒 Device A Tasks</h3>
+      <div id="tasksA" style="font-size:.85rem"><div class="status">—</div></div>
+    </div>
+    <div style="flex:1">
+      <h3 style="font-size:.9rem;color:#7ee787;margin-bottom:6px">🔮 Device B Tasks</h3>
+      <div id="tasksB" style="font-size:.85rem"><div class="status">—</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Conversation Log -->
+<div class="card">
+  <h2>💬 Conversation</h2>
+  <div id="convo"><div class="status">No messages yet</div></div>
+</div>
+
+<script>
+const BASE = location.origin;
+
+async function fetchJSON(url) {
+  const r = await fetch(url, {headers:{'ngrok-skip-browser-warning':'true'}});
+  return r.ok ? r.json() : null;
+}
+
+async function playChirp() {
+  const btn = document.getElementById('btnPlay');
+  const audio = document.getElementById('chirpAudio');
+  const st = document.getElementById('chirpStatus');
+  btn.disabled = true;
+  st.textContent = 'Fetching chirp...';
+  try {
+    const r = await fetch(BASE+'/vault/latest-chirp', {headers:{'ngrok-skip-browser-warning':'true'}});
+    if (!r.ok) { st.textContent = 'No chirp available yet'; btn.disabled=false; return; }
+    const blob = await r.blob();
+    audio.src = URL.createObjectURL(blob);
+    audio.style.display = 'block';
+    audio.play();
+    st.textContent = '🔊 Playing chirp...';
+  } catch(e) { st.textContent = 'Error: '+e.message; }
+  btn.disabled = false;
+}
+
+async function startListening() {
+  const btn = document.getElementById('btnListen');
+  const st = document.getElementById('listenStatus');
+  const res = document.getElementById('listenResult');
+  btn.disabled = true;
+  res.style.display = 'none';
+  st.textContent = '🎤 Requesting mic access...';
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio:{sampleRate:48000,channelCount:1,echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    const ctx = new AudioContext({sampleRate: 48000});
+    const src = ctx.createMediaStreamSource(stream);
+    const proc = ctx.createScriptProcessor(4096, 1, 1);
+    const chunks = [];
+    proc.onaudioprocess = e => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+    src.connect(proc);
+    proc.connect(ctx.destination);
+    // Record for 6 seconds
+    for (let i = 6; i > 0; i--) {
+      st.textContent = `🎤 Listening... ${i}s remaining`;
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    proc.disconnect(); src.disconnect(); stream.getTracks().forEach(t => t.stop()); ctx.close();
+    st.textContent = '⏳ Sending audio to Oracle...';
+    // Merge chunks into single Float32Array
+    const total = chunks.reduce((a, c) => a + c.length, 0);
+    const pcm = new Float32Array(total);
+    let off = 0;
+    for (const c of chunks) { pcm.set(c, off); off += c.length; }
+    // Send raw float32 PCM bytes
+    const r = await fetch(BASE+'/oracle/listen-audio', {
+      method:'POST', headers:{'Content-Type':'application/octet-stream','ngrok-skip-browser-warning':'true'},
+      body: pcm.buffer
+    });
+    const d = await r.json();
+    res.style.display = 'block';
+    if (d.decrypted) {
+      if (d.is_task) {
+        st.textContent = '✅ Task received via chirp!';
+        res.innerHTML = `<strong>📋 Task Created on Device B:</strong>\n${d.decrypted}\n\n<strong>🔮 Oracle says:</strong>\n${d.persona}`;
+        refreshTasks();
+      } else {
+        st.textContent = '✅ Chirp decoded!';
+        res.innerHTML = `<strong>🔮 Oracle says:</strong>\n${d.persona}\n\n<strong>Decrypted:</strong> ${d.decrypted}`;
+      }
+    } else {
+      st.textContent = d.message || 'No chirp detected';
+      res.textContent = d.message || d.error || JSON.stringify(d);
+    }
+    refreshConvo();
+  } catch(e) { st.textContent = 'Error: '+e.message; }
+  btn.disabled = false;
+}
+
+async function decode() {
+  const enc = document.getElementById('encInput').value.trim();
+  const res = document.getElementById('result');
+  if (!enc) { res.style.display='block'; res.textContent='⚠ Paste an encrypted token first'; return; }
+  try {
+    const r = await fetch(BASE+'/oracle/decode', {
+      method:'POST', headers:{'Content-Type':'application/json','ngrok-skip-browser-warning':'true'},
+      body: JSON.stringify({encrypted: enc})
+    });
+    const d = await r.json();
+    res.style.display='block';
+    if (d.decrypted) {
+      res.innerHTML = `<strong>🔮 Oracle says:</strong>\n${d.persona}\n\n<strong>Decrypted:</strong> ${d.decrypted}`;
+    } else {
+      res.textContent = '❌ ' + (d.error || JSON.stringify(d));
+    }
+    refreshConvo();
+  } catch(e) { res.style.display='block'; res.textContent='Error: '+e.message; }
+}
+
+async function refreshConvo() {
+  const el = document.getElementById('convo');
+  const data = await fetchJSON(BASE+'/conversation');
+  if (!data || !data.conversation.length) { el.innerHTML='<div class="status">No messages yet</div>'; return; }
+  el.innerHTML = data.conversation.map(m => {
+    const cls = m.agent;
+    const icon = m.agent==='vault' ? '🔒' : '🔮';
+    let body = m.persona_line;
+    if (m.encrypted) body += `\n<span class="tag">🔑 ${m.encrypted.slice(0,50)}...</span>`;
+    if (m.decrypted) body += `\n<span class="tag">📝 ${m.decrypted}</span>`;
+    return `<div class="msg ${cls}">${icon} ${body}</div>`;
+  }).join('');
+}
+
+async function sendTaskChirp() {
+  const desc = document.getElementById('taskDesc').value.trim();
+  const st = document.getElementById('taskStatus');
+  if (!desc) { st.textContent = '⚠ Enter a task description'; return; }
+  st.textContent = '🔒 Encrypting task into chirp...';
+  try {
+    const r = await fetch(BASE+'/vault/send-task', {
+      method:'POST', headers:{'Content-Type':'application/json','ngrok-skip-browser-warning':'true'},
+      body: JSON.stringify({description: desc})
+    });
+    const d = await r.json();
+    if (d.status === 'task_sealed') {
+      st.textContent = '✅ Task chirp ready! Hit Play Chirp above — Device B should be listening.';
+      document.getElementById('taskDesc').value = '';
+      document.getElementById('btnPlayTask').style.display = 'inline-block';
+      refreshConvo();
+    } else {
+      st.textContent = '❌ ' + (d.error || JSON.stringify(d));
+    }
+  } catch(e) { st.textContent = 'Error: '+e.message; }
+}
+
+async function refreshTasks() {
+  for (const [device, elId] of [['device_a','tasksA'],['device_b','tasksB']]) {
+    const el = document.getElementById(elId);
+    try {
+      const d = await fetchJSON(BASE+'/action-items/'+device);
+      if (!d || !d.action_items || !d.action_items.length) { el.innerHTML='<div class="status">No tasks</div>'; continue; }
+      el.innerHTML = d.action_items.slice(0,20).map(t => {
+        const check = t.completed ? '✅' : '⬜';
+        const desc = t.description || '(no description)';
+        return `<div class="msg" style="padding:6px 8px;margin-bottom:4px;font-size:.83rem">${check} ${desc}</div>`;
+      }).join('');
+    } catch(e) { el.innerHTML='<div class="status">Error loading</div>'; }
+  }
+}
+
+function refreshAll() { refreshConvo(); refreshTasks(); }
+
+// Auto-refresh every 5s
+refreshConvo();
+refreshTasks();
+setInterval(refreshConvo, 5000);
+setInterval(refreshTasks, 10000);
+</script>
+</body>
+</html>
+

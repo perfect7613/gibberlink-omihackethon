@@ -1,0 +1,7 @@
+fastapi>=0.100
+uvicorn[standard]
+cryptography
+python-dotenv
+httpx
+# ggwave — install from source: GGWAVE_USE_CYTHON=1 pip install --no-build-isolation git+https://github.com/ggerganov/ggwave.git#subdirectory=bindings/python
+
