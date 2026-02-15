@@ -230,13 +230,31 @@ async function refreshTasks() {
     try {
       const d = await fetchJSON(BASE+'/action-items/'+device);
       if (!d || !d.action_items || !d.action_items.length) { el.innerHTML='<div class="status">No tasks</div>'; continue; }
+      const targetDevice = device === 'device_a' ? 'device_b' : 'device_a';
       el.innerHTML = d.action_items.slice(0,20).map(t => {
         const check = t.completed ? '✅' : '⬜';
         const desc = t.description || '(no description)';
-        return `<div class="msg" style="padding:6px 8px;margin-bottom:4px;font-size:.83rem">${check} ${desc}</div>`;
+        const fwd = `<button onclick="forwardTask('${t.id}','${device}','${targetDevice}')" style="font-size:.7rem;padding:2px 6px;margin-left:6px;background:#30363d;border-radius:4px">→ fwd</button>`;
+        return `<div class="msg" style="padding:6px 8px;margin-bottom:4px;font-size:.83rem">${check} ${desc}${fwd}</div>`;
       }).join('');
     } catch(e) { el.innerHTML='<div class="status">Error loading</div>'; }
   }
+}
+
+async function forwardTask(taskId, fromDevice, toDevice) {
+  try {
+    const r = await fetch(BASE+'/action-items/forward', {
+      method:'POST', headers:{'Content-Type':'application/json','ngrok-skip-browser-warning':'true'},
+      body: JSON.stringify({task_id: taskId, from: fromDevice, to: toDevice})
+    });
+    const d = await r.json();
+    if (d.status === 'forwarded') {
+      document.getElementById('taskStatus').textContent = `✅ Task forwarded to ${toDevice}`;
+      refreshTasks();
+    } else {
+      document.getElementById('taskStatus').textContent = '❌ ' + (d.error || JSON.stringify(d));
+    }
+  } catch(e) { document.getElementById('taskStatus').textContent = 'Error: '+e.message; }
 }
 
 function refreshAll() { refreshConvo(); refreshTasks(); }

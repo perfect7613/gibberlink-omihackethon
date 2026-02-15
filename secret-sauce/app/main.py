@@ -280,6 +280,45 @@ async def get_action_items(device: str):
         return JSONResponse(status_code=502, content={"error": str(e)})
 
 
+@app.post("/action-items/forward")
+async def forward_action_item(request: Request):
+    """Forward an existing task from one device to another via Developer API.
+
+    Body: {"task_id": "...", "from": "device_a", "to": "device_b"}
+    """
+    body = await request.json()
+    task_id = body.get("task_id", "")
+    from_device = body.get("from", "")
+    to_device = body.get("to", "")
+
+    if not task_id or not from_device or not to_device:
+        return JSONResponse(status_code=400, content={"error": "missing task_id, from, or to"})
+
+    dev_a_key, dev_b_key = omi.get_dev_keys()
+    keys = {"device_a": dev_a_key, "device_b": dev_b_key}
+    from_key = keys.get(from_device)
+    to_key = keys.get(to_device)
+
+    if not from_key or not to_key:
+        return JSONResponse(status_code=400, content={"error": f"Missing API key for {from_device} or {to_device}"})
+
+    try:
+        tasks = await omi.get_action_items(from_key)
+    except Exception as e:
+        return JSONResponse(status_code=502, content={"error": f"Failed to fetch tasks: {e}"})
+
+    task = next((t for t in tasks if t.get("id") == task_id), None)
+    if not task:
+        return JSONResponse(status_code=404, content={"error": "Task not found on source device"})
+
+    try:
+        result = await omi.create_action_item(to_key, task["description"], completed=task.get("completed", False))
+    except Exception as e:
+        return JSONResponse(status_code=502, content={"error": f"Failed to create task: {e}"})
+
+    return {"status": "forwarded", "from": from_device, "to": to_device, "task": result}
+
+
 @app.post("/vault/send-task")
 async def vault_send_task(request: Request):
     """Encrypt a task description as TASK:... → generate chirp WAV.
