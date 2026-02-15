@@ -4,14 +4,13 @@
 
 Secret Sauce is a private communication layer for [Omi](https://omi.me) wearable devices. It transmits encrypted voice notes and tasks between two Omi devices using **data-over-sound** — no Bluetooth, no Wi-Fi, no pairing. Just a speaker, a microphone, and a shared encryption key.
 
-Two AI agent personas — **Vault 🔒** (encrypts) and **Oracle 🔮** (decrypts) — manage the pipeline and store results back to each device's Omi memory and task list.
 
 ---
 
 ## How It Works
 
 ```
-Device A (Vault 🔒)                          Device B (Oracle 🔮)
+Device A                                      Device B 
 ─────────────────                             ─────────────────
 User speaks into Omi →
   Omi transcribes →
@@ -57,15 +56,11 @@ The encrypted payload travels through the air as an audible chirp. Anyone can *h
 | **Developer API** (`/v1/dev/user/action-items`) | Creates, retrieves, and forwards tasks between devices |
 | **Webhook** (`/vault/memory-created`) | Triggered when Omi creates a memory from speech — kicks off the encryption pipeline |
 
-### 🤖 Two Agent Personas
-- **Vault 🔒** — cryptic, secretive. Seals and encrypts messages.
-- **Oracle 🔮** — wise, revealing. Decodes and unveils the hidden truth.
-
 ### 🖥️ Web Dashboard
 - Chirp player — play the latest encrypted chirp
-- Oracle Listener — Phone B's browser mic captures chirps (6-second recording via Web Audio API at 48 kHz)
+- Chirp Listener — Phone B's browser mic captures chirps (6-second recording via Web Audio API at 48 kHz)
 - Task panel — seal tasks as chirps, view both devices' task lists, forward tasks
-- Conversation log — live feed of Vault/Oracle exchanges
+- Conversation log — live feed of all exchanges
 
 ---
 
@@ -155,7 +150,7 @@ Two Omi devices in the same room become a **private encrypted channel** — no i
   Phone A plays chirp ~~~>            Phone B plays chirp
   Phone A mic decodes <~~~            Phone B mic decodes
       │                                      │
-  Oracle reveals Bob's message         Oracle reveals Alice's message
+   Reveals Bob's message               Reveals Alice's message
   + stored in Alice's Omi memory       + stored in Bob's Omi memory
   + tasks sync bidirectionally         + tasks sync bidirectionally
 ```
@@ -185,7 +180,7 @@ No friend requests. No QR codes. No phone numbers. If you're close enough to hea
 | A → B task assignment via chirp | ✅ Working |
 | A → B memory storage (Omi Integration API) | ✅ Working |
 | Task list viewing & forwarding per device | ✅ Working |
-| B → A reverse direction | 🔜 Same architecture, second Vault+Oracle pair |
+| B → A reverse direction | 🔜 Same architecture, second device pair |
 | Auto-pairing handshake chirp | 🔜 Devices discover each other via sound |
 | Group mode (N devices, shared key) | 🔜 One chirp, all decode |
 | Conversation threading by source device | 🔜 Tag messages with Omi device ID |
@@ -199,7 +194,6 @@ secret-sauce/
 ├── app/
 │   ├── crypto.py      # AES-256-GCM encrypt/decrypt
 │   ├── sound.py       # ggwave encode/decode with chunking
-│   ├── agents.py      # Vault 🔒 + Oracle 🔮 personas
 │   ├── models.py      # Pydantic models (MemoryPayload, AgentMessage)
 │   ├── omi.py         # Omi API client (memories + action items)
 │   └── main.py        # FastAPI server — all endpoints
